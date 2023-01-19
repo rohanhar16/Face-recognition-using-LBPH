@@ -2,21 +2,20 @@
 
 # Summary
 
-1. [Introduction](#introduction)
-2. [Step-by-Step](#step-by-step)  
-2.1. [Comparing Histograms](#comparing-histograms)  
-2.2. [Important Notes](#important-notes)
-3. [I/O](#io)  
-3.1. [Input](#input)  
-3.2. [Output](#output)
-4. [Usage](#usage)  
-4.1. [Installation](#installation)  
-4.2. [Usage Example](#usage-example)  
-4.3. [Parameters](#parameters)  
-4.4. [Metrics](#metrics)  
-5. [References](#references)
-6. [How to contribute](#how-to-contribute)  
-6.1. [Contributing](#contributing)
+1. [Introduction to LBP](#introduction)
+- [Step-by-Step](#step-by-step)  
+- [Comparing Histograms](#comparing-histograms)  
+- [Important Notes](#important-notes)
+- [I/O](#io)  
+- [Input](#input)  
+- [Output](#output)
+2. [Face recognition using LBPH](#face-recognition)
+- [Dataset](#dataset)
+- [Generate Labels for images](#labels)
+- [Train model](#train)
+- [Saving model](#save)
+- [Load model, and test with Web-camera](#load)
+3. [References](#references)
 
 # Introduction
 
@@ -24,7 +23,7 @@ Local Binary Patterns (LBP) is a type of visual descriptor used for classificati
 
 As LBP is a visual descriptor it can also be used for face recognition tasks, as can be seen in the following Step-by-Step explanation.
 
-# Step-by-Step
+## Step-by-Step
 
 In this section, it is shown a step-by-step explanation of the LBPH algorithm:
 
@@ -43,7 +42,7 @@ In this section, it is shown a step-by-step explanation of the LBPH algorithm:
 7. Now, the algorithm is already trained and we can Predict a new image.
 8. To predict a new image we just need to call the `Predict` function passing the image as parameter. The `Predict` function will extract the histogram from the new image, compare it to the histograms stored in the data structure and return the label and distance corresponding to the closest histogram if no error has occurred. **Note**: It uses the [euclidean distance](#comparing-histograms) metric as the default metric to compare the histograms. The closer to zero is the distance, the greater is the confidence.
 
-## Comparing Histograms
+### Comparing Histograms
 
 The LBPH package provides the following metrics to compare the histograms:
 
@@ -65,23 +64,19 @@ The LBPH package provides the following metrics to compare the histograms:
 
 The comparison metric can be chosen as explained in the [metrics](#metrics) section.
 
-## Important Notes
+### Important Notes
 
 The current LBPH implementation uses a fixed `radius` of `1` and a fixed number of `neighbors` equal to `8`. We still need to implement the usage of these parameters in the LBP package (feel free to contribute here). Related to the [issue 1](https://github.com/kelvins/lbph/issues/1).
 
-# I/O
+## I/O
 
 In this section, you will find a brief explanation about the input and output data of the algorithm.
 
-## Input
+### Input
 
 All input images (for training and testing) must have the same size. Different of OpenCV, the images don't need to be in grayscale, because each pixel is automatically converted to grayscale in the [GetPixels](https://github.com/kelvins/lbph/blob/master/lbp/lbp.go#L55) function using the following [formula](https://en.wikipedia.org/wiki/Grayscale#Luma_coding_in_video_systems):
 
-```
-Y = (0.299 * RED) + (0.587 * GREEN) + (0.114 * BLUE)
-```
-
-## Output
+### Output
 
 The `Predict` function returns 3 values:
 
@@ -91,6 +86,135 @@ The `Predict` function returns 3 values:
 
 Using the label you can check if the algorithm has correctly predicted the image. In a real world application, it is not feasible to manually verify all images, so we can use the distance to infer if the algorithm has predicted the image correctly.
 
-# Usage
+# Face recognition using LBPH Step by Step guide
 
-In this section, we explain how the algorithm should be used.
+In this section we will create a face recognition system using LBPH (local binary pattern histogram). This guide is didvide into multiple steps including creating own dataset, generate labels for images, train the model using created dataset, save the model, and testing the model with web-camera.
+
+## Dataset [Dataset](#dataset)
+
+We have created a dataset of sample size = 200 using openCV by extracting the 200 frames, and will convert into gray scale images. Images will be saved in <name>.<name_id>.<frame_num>.jpg
+
+## Creating labels for images
+
+### Define function to create images and labels for training
+Below function creates the labels for the images.
+```
+def getImagesAndLabels(path):
+    imagePaths = [os.path.join(path, f) for f in os.listdir(path)]
+    # create empth face list
+    faceSamples = []
+    # create empty ID list
+    Ids = []
+    # now looping through all the image paths and loading the Ids and the images
+    for imagePath in imagePaths:
+        # loading the image and converting it to gray scale
+        pilImage = Image.open(imagePath).convert('L')
+        # Now we are converting the PIL image into numpy array
+        imageNp = np.array(pilImage, 'uint8')
+        # getting the Id from the image
+
+        Id = int(os.path.split(imagePath)[-1].split(".")[1])
+        # extract the face from the training image sample
+        faces = detector.detectMultiScale(imageNp)
+        # If a face is there then append that in the list as well as Id of it
+        for (x, y, w, h) in faces:
+            faceSamples.append(imageNp[y:y + h, x:x + w])
+            Ids.append(Id)
+    return faceSamples, Ids
+  
+ ```
+  
+## Training model.[Train model](#train)
+
+### Below code detects the face from the data, and trains the model.
+```
+model = cv2.face.LBPHFaceRecognizer_create()
+
+detector = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+
+faces, Id = getImagesAndLabels(image_path)
+
+# Training the model
+model.train(faces, np.array(Id))
+```
+  
+## Save model.
+
+```
+model.save("./trained_model2.yml")
+```
+  
+## Testing the model with web-camera
+ 
+```
+  #loading the model
+
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+recognizer.read('model/trained_model2.yml')
+faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
+font = cv2.FONT_HERSHEY_SIMPLEX
+id = 0
+
+# add the list of names of your dataset here
+names = ['rohan','none'] 
+
+
+cam = cv2.VideoCapture(-1)
+
+while True:
+    ret, img =cam.read()
+    #img = cv2.flip(img, -1) # Flip vertically
+    gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    
+    faces = faceCascade.detectMultiScale( 
+        gray,
+        scaleFactor = 1.2,
+        minNeighbors = 5
+       )
+    for(x,y,w,h) in faces:
+        cv2.rectangle(img, (x,y), (x+w,y+h), (0,255,0), 2)
+        id, confidence = recognizer.predict(gray[y:y+h,x:x+w])
+        
+        # If confidence is less them 100 ==> "0" : perfect match 
+        if (confidence < 75):
+            id = names[id]
+            confidence = "  {0}%".format(round(100 - confidence))
+        else:
+            id = "unknown"
+            confidence = "  {0}%".format(round(100 - confidence))
+        
+        cv2.putText(
+                    img, 
+                    str(id), 
+                    (x+5,y-5), 
+                    font, 
+                    1, 
+                    (255,255,255), 
+                    2
+                   )
+         
+    
+    cv2.imshow('camera',img) 
+    if cv2.waitKey(10) & 0xff == 'q':# Press 'ESC' for exiting video
+        break
+# Do a bit of cleanup
+print("\n [INFO] Exiting Program and cleanup stuff")
+cam.release()
+cv2.destroyAllWindows()
+```
+
+## Clove the Repository and run **faceRecogition.ipynb** for steo byb step code execution.
+                             
+# References
+
+* Ahonen, Timo, Abdenour Hadid, and Matti Pietikäinen. "Face recognition with local binary patterns." Computer vision-eccv 2004 (2004): 469-481. Link: https://link.springer.com/chapter/10.1007/978-3-540-24670-1_36
+
+* Face Recognizer module. Open Source Computer Vision Library (OpenCV) Documentation. Version 3.0. Link: http://docs.opencv.org/3.0-beta/modules/face/doc/facerec/facerec_api.html
+
+* Local binary patterns. Wikipedia. Link: https://en.wikipedia.org/wiki/Local_binary_patterns
+
+* OpenCV Histogram Comparison. http://docs.opencv.org/2.4/doc/tutorials/imgproc/histograms/histogram_comparison/histogram_comparison.html
+
+* Local Binary Patterns by Philipp Wagner. Link: http://bytefish.de/blog/local_binary_patterns/
+                        
+* Face recognition app by Arohi Singala . link https://www.youtube.com/watch?v=VTcMFtaIhag&lc=UgxbVdKzSQlvsEw9QLN4AaABAg
